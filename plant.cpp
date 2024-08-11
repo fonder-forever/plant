@@ -2,6 +2,9 @@
 #include<graphics.h>
 #include<stdlib.h>
 #include"tools.h"
+#include<time.h>
+#include<mmsystem.h>
+#pragma comment (lib,"winmm.lib")
 
 #define WIDTH 900
 #define HEGHT 600
@@ -13,10 +16,13 @@ IMAGE imgBar;//栏目
 IMAGE imgCards[ZHI_WU_COUNT];//卡牌
 IMAGE *imgZHIWU[ZHI_WU_COUNT][20];//为了灵活运用内存先用数组指针初始化，后面再分配内存
 IMAGE imgSun[29];
+IMAGE imgZm[22];
 
 
 int curX, curY;			//当前鼠标坐标
 int curZhiWu;          //当前植物
+int timer = 0;
+int sunshine = 150;
 
 struct zhiwu{
 	int type;			//植物类型
@@ -29,9 +35,18 @@ struct sunshine
 	int y;
 	int frameIndex;
 	int destY;
-	int used;  //检测是否在使用
+	bool used;  //检测是否在使用
 };
 struct sunshine balls[10];		//预先准备十个阳光（池的概念）
+struct zm {
+	int x;
+	int y;
+	int frameIndex;
+	bool used;
+	int speed;
+
+};
+struct zm zms[10];
 
 void gameInit();
 void updateWindow();
@@ -39,6 +54,9 @@ void userClick();
 void updateGame();
 void startUI();
 void createSun();
+void updateSun();
+void createZm();
+
 bool fileExist(const char* name);//？
 //void tool();
 int main()
@@ -99,16 +117,42 @@ void gameInit()
 
 		
 	}
-	memset(balls,0,sizeof(balls));
+	memset(balls,0,sizeof(balls));//阳光初始化
 	for (int i = 0; i < 29; i++)
 	{
 		sprintf_s(name, sizeof(name), "res/sunshine/%d.png", i + 1);
 		loadimage(&imgSun[i], name);
 	}
-	
+	srand(time(NULL));
+	//初始化僵尸
+	for (int i = 0; i < 22; i++)
+	{
+		sprintf_s(name, sizeof(name), "res/zm/%d.png", i + 1);
+		loadimage(&imgZm[i], name);
+	}
 	curZhiWu = 0;
 	//创建窗口
 	initgraph(WIDTH, HEGHT,1);			//第三个值填一调试
+	//设置字体
+	LOGFONT f;
+	gettextstyle(&f);
+	f.lfHeight = 30;
+	f.lfWeight = 15;
+	strcpy(f.lfFaceName,"Segoe UI Black");
+	f.lfQuality = ANTIALIASED_QUALITY;// 抗锯齿
+	settextstyle(&f);
+	setbkmode(TRANSPARENT);//设置背景
+	setcolor(BLACK);
+
+
+
+	//僵尸初始化
+	memset(zms,0,sizeof(zms));
+	for (int i = 0; i < 22; i++)
+	{
+		sprintf_s(name,sizeof(name),"res/zm/%d.png",i+1);
+		loadimage(&imgZm[i],name);
+	}
 
 }
 //
@@ -144,6 +188,22 @@ void updateWindow()
 			}
 		}
 	}
+	int ballMax = sizeof(balls) / sizeof(balls[0]);
+	for (int i = 0; i < ballMax; i++)
+	{
+		if (balls[i].used)
+			putimagePNG(balls[i].x, balls[i].y, &imgSun[balls[i].frameIndex]);
+	}
+	char score[8];
+	sprintf_s(score,sizeof(score),"%d",sunshine);		//转成字符串
+	outtextxy(276,67,score);
+
+
+	createZm();
+
+
+
+
 
 	EndBatchDraw();		//结束缓冲
 }
@@ -163,6 +223,21 @@ void userClick()		//用户操作
 				curZhiWu = num + 1;
 				
 			}
+			else if (1)
+			{
+				int i;
+				for (i = 0; i < 10; i++) {
+					if (balls[i].used &&
+						msg.x > balls[i].x && msg.x < balls[i].x + 80 &&
+						msg.y > balls[i].y && msg.y < balls[i].y + 80)
+					{
+						balls[i].used = false;
+						sunshine += 50;
+						mciSendString("play res/sunshine.mp3", 0,0,0);
+					}
+				}
+				
+			}
 			
 		}
 		else if (msg.message == WM_MOUSEMOVE &&status == 1)		//判断鼠标移动
@@ -177,7 +252,7 @@ void userClick()		//用户操作
 			{
 			int row = (msg.y - 179) / 102;
 			int col = (msg.x - 256) / 81;
-			if (map[row][col].type == 0) 
+			if (map[row][col].type == 0)    //判断之前有没有植物在这里
 			{
 				map[row][col].type = curZhiWu;
 				map[row][col].frameIndex = 0;
@@ -224,6 +299,11 @@ void updateGame()
 			}
 		}
 	}
+	
+	createSun();
+	//渲染sunshine
+	updateSun();
+		
 }
 void startUI()
 {
@@ -255,11 +335,62 @@ void startUI()
 	}
 
 }
-void createSun() 
+void createSun()
+{
+	static int count = 0;		//用来减少阳光产生的频率
+	static int fre = 200;
+	count++;
+	if (count > fre )
+	{
+	fre = 100 + rand() % 200;
+	int ballMax = sizeof(balls) / sizeof(balls[0]);
+	int i;
+	for (i = 0; i < ballMax && balls[i].used; i++);
+	if (i >= ballMax)return;
+		balls[i].used = true;
+		balls[i].destY =200 + rand()%4*90;//
+		balls[i].x = 260 + rand()%(900-260);	//260-900
+		balls[i].y = 60;//
+		balls[i].frameIndex = 0;
+		count = 0;
+	}
+	
+	
+}
+void updateSun()
 {
 	int ballMax = sizeof(balls) / sizeof(balls[0]);
-	for (int i = 0; i < ballMax && balls[i].used; i++)
+	for (int i = 0; i < ballMax; i++)
 	{
-
+		if (balls[i].used)
+		{
+			balls[i].frameIndex = (balls[i].frameIndex + 1) % 29;					//balls[i].frameIndex++;
+																					//balls[i].frameIndex %= 29;
+			if(timer == 0)
+				balls[i].y += 2;
+				if (balls[i].y == balls[i].destY) {
+						timer++;
+						if (timer > 100)
+						{
+							balls[i].used = false;
+							timer = 0;
+						}	
+			
+				}
+				
+		}
 	}
+	
+}
+void createZm()
+{
+	int i;
+	for (i = 0; i < 10 ; i++)
+	{
+		if (zms[i].used)
+		{
+
+		}
+	}
+
 }
